@@ -937,6 +937,18 @@ STBIDEF const char *stbi_failure_reason(void)
    return stbi__g_failure_reason;
 }
 
+static
+#ifdef STBI_THREAD_LOCAL
+STBI_THREAD_LOCAL
+#endif
+int stbi__png_transparent_palette = 0;
+
+static
+#ifdef STBI_THREAD_LOCAL
+STBI_THREAD_LOCAL
+#endif
+int stbi__png_to_bgr_palette = 0;
+
 #ifndef STBI_NO_FAILURE_STRINGS
 static int stbi__err(const char *str)
 {
@@ -4997,11 +5009,20 @@ static int stbi__parse_png_file(stbi__png *z, int scan, int req_comp)
             if (c.length > 256*3) return stbi__err("invalid PLTE","Corrupt PNG");
             pal_len = c.length / 3;
             if (pal_len * 3 != c.length) return stbi__err("invalid PLTE","Corrupt PNG");
-            for (i=0; i < pal_len; ++i) {
-               palette[i*4+0] = stbi__get8(s);
-               palette[i*4+1] = stbi__get8(s);
-               palette[i*4+2] = stbi__get8(s);
-               palette[i*4+3] = 255;
+            if (stbi__png_to_bgr_palette) {
+               for (i=0; i < pal_len; ++i) {
+                  palette[i*4+2] = stbi__get8(s);
+                  palette[i*4+1] = stbi__get8(s);
+                  palette[i*4+0] = stbi__get8(s);
+                  palette[i*4+3] = (stbi__png_transparent_palette && i == 0) ? 0 : 255;
+               }
+            } else {
+               for (i=0; i < pal_len; ++i) {
+                  palette[i*4+0] = stbi__get8(s);
+                  palette[i*4+1] = stbi__get8(s);
+                  palette[i*4+2] = stbi__get8(s);
+                  palette[i*4+3] = (stbi__png_transparent_palette && i == 0) ? 0 : 255;
+               }
             }
             break;
          }
@@ -5076,6 +5097,9 @@ static int stbi__parse_png_file(stbi__png *z, int scan, int req_comp)
                stbi__de_iphone(z);
             if (pal_img_n) {
                // pal_img_n == 3 or 4
+               if (stbi__png_transparent_palette && pal_img_n == 3) {
+                  pal_img_n = 4;
+               }
                s->img_n = pal_img_n; // record the actual colors we had
                s->img_out_n = pal_img_n;
                if (req_comp >= 3) s->img_out_n = req_comp;
